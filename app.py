@@ -106,6 +106,16 @@ def load_preset(name: str) -> NetemConfig:
     return NetemConfig(**merged)
 
 
+def delete_preset(name: str) -> Tuple[int, str]:
+    ensure_presets_dir()
+    safe_name = sanitize_preset_name(name)
+    path = PRESETS_DIR / f"{safe_name}.json"
+    if not path.exists():
+        return 1, "Пресет не найден."
+    path.unlink()
+    return 0, f"Удалён пресет: {safe_name}"
+
+
 def build_netem_clause(cfg: NetemConfig) -> str:
     pieces: List[str] = []
     if cfg.delay_enabled:
@@ -221,6 +231,12 @@ def index():
             except Exception as exc:
                 last_output = f"Ошибка загрузки пресета: {exc}"
                 last_status = 1
+        elif action == "delete_preset":
+            last_status, last_output = delete_preset(selected_preset)
+            presets = list_presets()
+            if last_status == 0 and selected_preset == preset_name:
+                preset_name = ""
+            selected_preset = ""
         elif action == "reset":
             script = build_reset_command(cfg)
             last_status, last_output = run_script(script)
@@ -364,6 +380,7 @@ TEMPLATE = """
           {% endfor %}
         </select>
         <button type="submit" name="action" value="load_preset">Загрузить пресет</button>
+        <button type="submit" name="action" value="delete_preset">Удалить пресет</button>
       </div>
     </div>
 
