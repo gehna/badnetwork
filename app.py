@@ -209,6 +209,7 @@ TEMPLATE = """
     body { font-family: Arial, sans-serif; margin: 24px; max-width: 960px; }
     form { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px 18px; align-items: center; }
     label { font-weight: bold; }
+    .checkbox-label { display: flex; align-items: center; gap: 6px; }
     input { width: 100%; padding: 6px 8px; }
     .wide { grid-column: 1 / -1; }
     textarea { width: 100%; height: 220px; }
@@ -229,39 +230,39 @@ TEMPLATE = """
     <label for="downlink">downlink (eth1):</label>
     <input id="downlink" name="downlink" value="{{ cfg.downlink }}" required />
 
-    <label for="delay_ms">
+    <label for="delay_ms" class="checkbox-label">
       <input type="checkbox" name="delay_enabled" {% if cfg.delay_enabled %}checked{% endif %} />
-      Delay (ms):
+      <span>Delay (ms):</span>
     </label>
     <input id="delay_ms" name="delay_ms" type="number" step="1" min="0" value="{{ cfg.delay_ms }}" />
 
-    <label for="jitter_ms">
+    <label for="jitter_ms" class="checkbox-label">
       <input type="checkbox" name="jitter_enabled" {% if cfg.jitter_enabled %}checked{% endif %} />
-      Jitter (ms):
+      <span>Jitter (ms):</span>
     </label>
     <input id="jitter_ms" name="jitter_ms" type="number" step="1" min="0" value="{{ cfg.jitter_ms }}" />
 
-    <label for="loss_pct">
+    <label for="loss_pct" class="checkbox-label">
       <input type="checkbox" name="loss_enabled" {% if cfg.loss_enabled %}checked{% endif %} />
-      Loss (%):
+      <span>Loss (%):</span>
     </label>
     <input id="loss_pct" name="loss_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.loss_pct }}" />
 
-    <label for="duplicate_pct">
+    <label for="duplicate_pct" class="checkbox-label">
       <input type="checkbox" name="duplicate_enabled" {% if cfg.duplicate_enabled %}checked{% endif %} />
-      Duplicate (%):
+      <span>Duplicate (%):</span>
     </label>
     <input id="duplicate_pct" name="duplicate_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.duplicate_pct }}" />
 
-    <label for="corrupt_pct">
+    <label for="corrupt_pct" class="checkbox-label">
       <input type="checkbox" name="corrupt_enabled" {% if cfg.corrupt_enabled %}checked{% endif %} />
-      Corrupt (%):
+      <span>Corrupt (%):</span>
     </label>
     <input id="corrupt_pct" name="corrupt_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.corrupt_pct }}" />
 
-    <label for="rate_kbit">
+    <label for="rate_kbit" class="checkbox-label">
       <input type="checkbox" name="rate_enabled" {% if cfg.rate_enabled %}checked{% endif %} />
-      Rate (kbit):
+      <span>Rate (kbit):</span>
     </label>
     <input id="rate_kbit" name="rate_kbit" type="number" step="1" min="1" value="{{ cfg.rate_kbit }}" />
 
