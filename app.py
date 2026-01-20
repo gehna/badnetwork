@@ -1,6 +1,8 @@
+import json
 import shlex
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 from flask import Flask, render_template_string, request
@@ -8,6 +10,7 @@ from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 app.secret_key = "badnetwork-demo-key"
+PRESETS_DIR = Path(__file__).parent / "presets"
 
 
 @dataclass
@@ -67,6 +70,40 @@ def to_config(form: Dict[str, str]) -> NetemConfig:
 
 def quote(value: str) -> str:
     return shlex.quote(value.strip()) if value else ""
+
+
+def ensure_presets_dir() -> None:
+    PRESETS_DIR.mkdir(exist_ok=True)
+
+
+def sanitize_preset_name(name: str) -> str:
+    safe = "".join(c for c in name if c.isalnum() or c in ("-", "_", "."))
+    return safe.strip(".")
+
+
+def list_presets() -> List[str]:
+    ensure_presets_dir()
+    return sorted([p.stem for p in PRESETS_DIR.glob("*.json")])
+
+
+def save_preset(name: str, cfg: NetemConfig) -> Tuple[int, str]:
+    ensure_presets_dir()
+    safe_name = sanitize_preset_name(name)
+    if not safe_name:
+        return 1, "Неверное имя пресета."
+    path = PRESETS_DIR / f"{safe_name}.json"
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(asdict(cfg), f, ensure_ascii=False, indent=2)
+    return 0, f"Сохранён пресет: {safe_name}"
+
+
+def load_preset(name: str) -> NetemConfig:
+    ensure_presets_dir()
+    safe_name = sanitize_preset_name(name)
+    path = PRESETS_DIR / f"{safe_name}.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    merged = {**asdict(DEFAULTS), **data}
+    return NetemConfig(**merged)
 
 
 def build_netem_clause(cfg: NetemConfig) -> str:
@@ -157,6 +194,9 @@ def run_script(script: str) -> Tuple[int, str]:
 def index():
     cfg = to_config(request.form if request.method == "POST" else {})
     action = request.form.get("action")
+    preset_name = request.form.get("preset_name", "")
+    selected_preset = request.form.get("preset_select", "")
+    presets = list_presets()
     last_output = ""
     last_status = 0
 
@@ -167,6 +207,20 @@ def index():
         elif action == "generate":
             # Only refresh preview_script; no execution needed.
             pass
+        elif action == "save_preset":
+            last_status, last_output = save_preset(preset_name, cfg)
+            presets = list_presets()
+        elif action == "load_preset":
+            try:
+                cfg = load_preset(selected_preset)
+                last_output = f"Загружен пресет: {selected_preset}"
+                last_status = 0
+            except FileNotFoundError:
+                last_output = "Пресет не найден."
+                last_status = 1
+            except Exception as exc:
+                last_output = f"Ошибка загрузки пресета: {exc}"
+                last_status = 1
         elif action == "reset":
             script = build_reset_command(cfg)
             last_status, last_output = run_script(script)
@@ -187,6 +241,8 @@ def index():
                 corrupt_enabled=False,
                 rate_enabled=False,
             )
+            preset_name = ""
+            selected_preset = ""
 
     preview_script = build_command(cfg)
 
@@ -196,6 +252,9 @@ def index():
         preview_script=preview_script,
         last_output=last_output,
         last_status=last_status,
+        presets=presets,
+        preset_name=preset_name,
+        selected_preset=selected_preset,
     )
 
 
@@ -217,6 +276,8 @@ TEMPLATE = """
     textarea { width: 100%; height: 220px; }
     .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
     button { padding: 8px 14px; cursor: pointer; }
+    .preset-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .preset-row input[type="text"], .preset-row select { flex: 1 1 220px; padding: 6px 8px; }
     .output { background: #f7f7f7; border: 1px solid #ccc; padding: 12px; white-space: pre-wrap; }
     .status-ok { color: green; }
     .status-bad { color: #b30000; }
@@ -287,6 +348,23 @@ TEMPLATE = """
     <div class="wide field">
       <label for="preview_script">Итоговый скрипт (tc + iptables):</label>
       <textarea id="preview_script" readonly>{{ preview_script }}</textarea>
+    </div>
+
+    <div class="wide field">
+      <label>Пресеты</label>
+      <div class="preset-row">
+        <input type="text" name="preset_name" placeholder="Имя для сохранения" value="{{ preset_name }}" />
+        <button type="submit" name="action" value="save_preset">Сохранить пресет</button>
+      </div>
+      <div class="preset-row">
+        <select name="preset_select">
+          <option value="">-- выберите пресет --</option>
+          {% for p in presets %}
+            <option value="{{ p }}" {% if p == selected_preset %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" name="action" value="load_preset">Загрузить пресет</button>
+      </div>
     </div>
 
     <div class="buttons wide">
