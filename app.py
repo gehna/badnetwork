@@ -20,6 +20,12 @@ class NetemConfig:
     duplicate_pct: str
     corrupt_pct: str
     rate_kbit: str
+    delay_enabled: bool = True
+    jitter_enabled: bool = True
+    loss_enabled: bool = True
+    duplicate_enabled: bool = True
+    corrupt_enabled: bool = True
+    rate_enabled: bool = True
 
 
 DEFAULTS = NetemConfig(
@@ -34,6 +40,12 @@ DEFAULTS = NetemConfig(
 )
 
 
+def parse_bool(form: Dict[str, str], key: str, default: bool = True) -> bool:
+    if not form:
+        return default
+    return key in form
+
+
 def to_config(form: Dict[str, str]) -> NetemConfig:
     return NetemConfig(
         uplink=form.get("uplink", DEFAULTS.uplink) or DEFAULTS.uplink,
@@ -44,6 +56,12 @@ def to_config(form: Dict[str, str]) -> NetemConfig:
         duplicate_pct=form.get("duplicate_pct", DEFAULTS.duplicate_pct),
         corrupt_pct=form.get("corrupt_pct", DEFAULTS.corrupt_pct),
         rate_kbit=form.get("rate_kbit", DEFAULTS.rate_kbit),
+        delay_enabled=parse_bool(form, "delay_enabled"),
+        jitter_enabled=parse_bool(form, "jitter_enabled"),
+        loss_enabled=parse_bool(form, "loss_enabled"),
+        duplicate_enabled=parse_bool(form, "duplicate_enabled"),
+        corrupt_enabled=parse_bool(form, "corrupt_enabled"),
+        rate_enabled=parse_bool(form, "rate_enabled"),
     )
 
 
@@ -53,19 +71,26 @@ def quote(value: str) -> str:
 
 def build_netem_clause(cfg: NetemConfig) -> str:
     pieces: List[str] = []
-    if cfg.delay_ms:
-        if cfg.jitter_ms:
-            pieces.append(
-                f"delay {cfg.delay_ms}ms {cfg.jitter_ms}ms distribution normal"
-            )
+    if cfg.delay_enabled:
+        delay = cfg.delay_ms or DEFAULTS.delay_ms
+        if cfg.jitter_enabled:
+            jitter = cfg.jitter_ms or DEFAULTS.jitter_ms
+            pieces.append(f"delay {delay}ms {jitter}ms distribution normal")
         else:
-            pieces.append(f"delay {cfg.delay_ms}ms")
-    if cfg.loss_pct:
-        pieces.append(f"loss {cfg.loss_pct}%")
-    if cfg.duplicate_pct:
-        pieces.append(f"duplicate {cfg.duplicate_pct}%")
-    if cfg.corrupt_pct:
-        pieces.append(f"corrupt {cfg.corrupt_pct}%")
+            pieces.append(f"delay {delay}ms")
+    elif cfg.jitter_enabled:
+        jitter = cfg.jitter_ms or DEFAULTS.jitter_ms
+        pieces.append(f"delay 0ms {jitter}ms distribution normal")
+
+    if cfg.loss_enabled:
+        loss = cfg.loss_pct or DEFAULTS.loss_pct
+        pieces.append(f"loss {loss}%")
+    if cfg.duplicate_enabled:
+        duplicate = cfg.duplicate_pct or DEFAULTS.duplicate_pct
+        pieces.append(f"duplicate {duplicate}%")
+    if cfg.corrupt_enabled:
+        corrupt = cfg.corrupt_pct or DEFAULTS.corrupt_pct
+        pieces.append(f"corrupt {corrupt}%")
     if not pieces:
         pieces.append("delay 0ms")
     return " ".join(pieces)
@@ -74,8 +99,23 @@ def build_netem_clause(cfg: NetemConfig) -> str:
 def build_command(cfg: NetemConfig) -> str:
     uplink = quote(cfg.uplink)
     downlink = quote(cfg.downlink)
-    rate = cfg.rate_kbit or DEFAULTS.rate_kbit
     netem_clause = build_netem_clause(cfg)
+    tc_section: List[str] = [
+        "# Reset old tc rules",
+        f"sudo tc qdisc del dev {downlink} root 2>/dev/null",
+        "# Shape bandwidth and add netem",
+    ]
+    if cfg.rate_enabled:
+        rate = cfg.rate_kbit or DEFAULTS.rate_kbit
+        tc_section.extend(
+            [
+                f"sudo tc qdisc add dev {downlink} root handle 1: htb default 10",
+                f"sudo tc class add dev {downlink} parent 1: classid 1:10 htb rate {rate}kbit ceil {rate}kbit",
+                f"sudo tc qdisc add dev {downlink} parent 1:10 handle 10: netem {netem_clause}",
+            ]
+        )
+    else:
+        tc_section.append(f"sudo tc qdisc add dev {downlink} root netem {netem_clause}")
 
     steps = [
         "# Enable IPv4 forwarding",
@@ -86,13 +126,8 @@ def build_command(cfg: NetemConfig) -> str:
         f"sudo iptables -t nat -A POSTROUTING -o {uplink} -j MASQUERADE",
         f"sudo iptables -A FORWARD -i {downlink} -o {uplink} -m state --state RELATED,ESTABLISHED -j ACCEPT",
         f"sudo iptables -A FORWARD -i {uplink} -o {downlink} -m state --state NEW -j ACCEPT",
-        "# Reset old tc rules",
-        f"sudo tc qdisc del dev {downlink} root 2>/dev/null",
-        "# Shape bandwidth and add netem",
-        f"sudo tc qdisc add dev {downlink} root handle 1: htb default 10",
-        f"sudo tc class add dev {downlink} parent 1: classid 1:10 htb rate {rate}kbit ceil {rate}kbit",
-        f"sudo tc qdisc add dev {downlink} parent 1:10 handle 10: netem {netem_clause}",
     ]
+    steps.extend(tc_section)
     return "\n".join(steps)
 
 
@@ -129,6 +164,9 @@ def index():
         if action == "apply":
             script = build_command(cfg)
             last_status, last_output = run_script(script)
+        elif action == "generate":
+            # Only refresh preview_script; no execution needed.
+            pass
         elif action == "reset":
             script = build_reset_command(cfg)
             last_status, last_output = run_script(script)
@@ -142,20 +180,15 @@ def index():
                 duplicate_pct="",
                 corrupt_pct="",
                 rate_kbit="",
+                delay_enabled=False,
+                jitter_enabled=False,
+                loss_enabled=False,
+                duplicate_enabled=False,
+                corrupt_enabled=False,
+                rate_enabled=False,
             )
 
-    preview_script = build_command(
-        NetemConfig(
-            uplink=cfg.uplink,
-            downlink=cfg.downlink,
-            delay_ms=cfg.delay_ms or DEFAULTS.delay_ms,
-            jitter_ms=cfg.jitter_ms or DEFAULTS.jitter_ms,
-            loss_pct=cfg.loss_pct or DEFAULTS.loss_pct,
-            duplicate_pct=cfg.duplicate_pct or DEFAULTS.duplicate_pct,
-            corrupt_pct=cfg.corrupt_pct or DEFAULTS.corrupt_pct,
-            rate_kbit=cfg.rate_kbit or DEFAULTS.rate_kbit,
-        )
-    )
+    preview_script = build_command(cfg)
 
     return render_template_string(
         TEMPLATE,
@@ -196,22 +229,40 @@ TEMPLATE = """
     <label for="downlink">downlink (eth1):</label>
     <input id="downlink" name="downlink" value="{{ cfg.downlink }}" required />
 
-    <label for="delay_ms">Delay (ms):</label>
+    <label for="delay_ms">
+      <input type="checkbox" name="delay_enabled" {% if cfg.delay_enabled %}checked{% endif %} />
+      Delay (ms):
+    </label>
     <input id="delay_ms" name="delay_ms" type="number" step="1" min="0" value="{{ cfg.delay_ms }}" />
 
-    <label for="jitter_ms">Jitter (ms):</label>
+    <label for="jitter_ms">
+      <input type="checkbox" name="jitter_enabled" {% if cfg.jitter_enabled %}checked{% endif %} />
+      Jitter (ms):
+    </label>
     <input id="jitter_ms" name="jitter_ms" type="number" step="1" min="0" value="{{ cfg.jitter_ms }}" />
 
-    <label for="loss_pct">Loss (%):</label>
+    <label for="loss_pct">
+      <input type="checkbox" name="loss_enabled" {% if cfg.loss_enabled %}checked{% endif %} />
+      Loss (%):
+    </label>
     <input id="loss_pct" name="loss_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.loss_pct }}" />
 
-    <label for="duplicate_pct">Duplicate (%):</label>
+    <label for="duplicate_pct">
+      <input type="checkbox" name="duplicate_enabled" {% if cfg.duplicate_enabled %}checked{% endif %} />
+      Duplicate (%):
+    </label>
     <input id="duplicate_pct" name="duplicate_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.duplicate_pct }}" />
 
-    <label for="corrupt_pct">Corrupt (%):</label>
+    <label for="corrupt_pct">
+      <input type="checkbox" name="corrupt_enabled" {% if cfg.corrupt_enabled %}checked{% endif %} />
+      Corrupt (%):
+    </label>
     <input id="corrupt_pct" name="corrupt_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.corrupt_pct }}" />
 
-    <label for="rate_kbit">Rate (kbit):</label>
+    <label for="rate_kbit">
+      <input type="checkbox" name="rate_enabled" {% if cfg.rate_enabled %}checked{% endif %} />
+      Rate (kbit):
+    </label>
     <input id="rate_kbit" name="rate_kbit" type="number" step="1" min="1" value="{{ cfg.rate_kbit }}" />
 
     <div class="wide">
@@ -220,6 +271,7 @@ TEMPLATE = """
     </div>
 
     <div class="buttons wide">
+      <button type="submit" name="action" value="generate">Сгенерировать</button>
       <button type="submit" name="action" value="apply">Выполнить</button>
       <button type="submit" name="action" value="reset">Сбросить правила</button>
       <button type="submit" name="action" value="clear">Очистить параметры</button>
