@@ -207,13 +207,15 @@ TEMPLATE = """
   <title>Bad Network Lab (tc/netem)</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; max-width: 960px; }
-    form { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px 18px; align-items: center; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 18px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
     label { font-weight: bold; }
-    .checkbox-label { display: flex; align-items: center; gap: 6px; }
-    input { width: 100%; padding: 6px 8px; }
+    .checkbox-label { display: inline-flex; align-items: center; gap: 8px; }
+    input[type="text"], input[type="number"] { width: 100%; padding: 6px 8px; }
+    input[type="checkbox"] { width: auto; height: auto; margin: 0; }
     .wide { grid-column: 1 / -1; }
     textarea { width: 100%; height: 220px; }
-    .buttons { display: flex; gap: 12px; margin: 12px 0; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
     button { padding: 8px 14px; cursor: pointer; }
     .output { background: #f7f7f7; border: 1px solid #ccc; padding: 12px; white-space: pre-wrap; }
     .status-ok { color: green; }
@@ -224,50 +226,66 @@ TEMPLATE = """
   <h1>Bad Network Lab (tc/netem)</h1>
   <p>Заполните параметры, посмотрите итоговый скрипт и выполните его на Ubuntu.</p>
   <form method="post">
-    <label for="uplink">uplink (eth0):</label>
-    <input id="uplink" name="uplink" value="{{ cfg.uplink }}" required />
+    <div class="field">
+      <label for="uplink">uplink (eth0):</label>
+      <input id="uplink" name="uplink" value="{{ cfg.uplink }}" required />
+    </div>
 
-    <label for="downlink">downlink (eth1):</label>
-    <input id="downlink" name="downlink" value="{{ cfg.downlink }}" required />
+    <div class="field">
+      <label for="downlink">downlink (eth1):</label>
+      <input id="downlink" name="downlink" value="{{ cfg.downlink }}" required />
+    </div>
 
-    <label for="delay_ms" class="checkbox-label">
-      <input type="checkbox" name="delay_enabled" {% if cfg.delay_enabled %}checked{% endif %} />
-      <span>Delay (ms):</span>
-    </label>
-    <input id="delay_ms" name="delay_ms" type="number" step="1" min="0" value="{{ cfg.delay_ms }}" />
+    <div class="field">
+      <label for="delay_ms" class="checkbox-label">
+        <input type="checkbox" name="delay_enabled" {% if cfg.delay_enabled %}checked{% endif %} />
+        <span>Delay (ms):</span>
+      </label>
+      <input id="delay_ms" name="delay_ms" type="number" step="1" min="0" value="{{ cfg.delay_ms }}" />
+    </div>
 
-    <label for="jitter_ms" class="checkbox-label">
-      <input type="checkbox" name="jitter_enabled" {% if cfg.jitter_enabled %}checked{% endif %} />
-      <span>Jitter (ms):</span>
-    </label>
-    <input id="jitter_ms" name="jitter_ms" type="number" step="1" min="0" value="{{ cfg.jitter_ms }}" />
+    <div class="field">
+      <label for="jitter_ms" class="checkbox-label">
+        <input type="checkbox" name="jitter_enabled" {% if cfg.jitter_enabled %}checked{% endif %} />
+        <span>Jitter (ms):</span>
+      </label>
+      <input id="jitter_ms" name="jitter_ms" type="number" step="1" min="0" value="{{ cfg.jitter_ms }}" />
+    </div>
 
-    <label for="loss_pct" class="checkbox-label">
-      <input type="checkbox" name="loss_enabled" {% if cfg.loss_enabled %}checked{% endif %} />
-      <span>Loss (%):</span>
-    </label>
-    <input id="loss_pct" name="loss_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.loss_pct }}" />
+    <div class="field">
+      <label for="loss_pct" class="checkbox-label">
+        <input type="checkbox" name="loss_enabled" {% if cfg.loss_enabled %}checked{% endif %} />
+        <span>Loss (%):</span>
+      </label>
+      <input id="loss_pct" name="loss_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.loss_pct }}" />
+    </div>
 
-    <label for="duplicate_pct" class="checkbox-label">
-      <input type="checkbox" name="duplicate_enabled" {% if cfg.duplicate_enabled %}checked{% endif %} />
-      <span>Duplicate (%):</span>
-    </label>
-    <input id="duplicate_pct" name="duplicate_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.duplicate_pct }}" />
+    <div class="field">
+      <label for="duplicate_pct" class="checkbox-label">
+        <input type="checkbox" name="duplicate_enabled" {% if cfg.duplicate_enabled %}checked{% endif %} />
+        <span>Duplicate (%):</span>
+      </label>
+      <input id="duplicate_pct" name="duplicate_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.duplicate_pct }}" />
+    </div>
 
-    <label for="corrupt_pct" class="checkbox-label">
-      <input type="checkbox" name="corrupt_enabled" {% if cfg.corrupt_enabled %}checked{% endif %} />
-      <span>Corrupt (%):</span>
-    </label>
-    <input id="corrupt_pct" name="corrupt_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.corrupt_pct }}" />
+    <div class="field">
+      <label for="corrupt_pct" class="checkbox-label">
+        <input type="checkbox" name="corrupt_enabled" {% if cfg.corrupt_enabled %}checked{% endif %} />
+        <span>Corrupt (%):</span>
+      </label>
+      <input id="corrupt_pct" name="corrupt_pct" type="number" step="0.1" min="0" max="100" value="{{ cfg.corrupt_pct }}" />
+    </div>
 
-    <label for="rate_kbit" class="checkbox-label">
-      <input type="checkbox" name="rate_enabled" {% if cfg.rate_enabled %}checked{% endif %} />
-      <span>Rate (kbit):</span>
-    </label>
-    <input id="rate_kbit" name="rate_kbit" type="number" step="1" min="1" value="{{ cfg.rate_kbit }}" />
+    <div class="field">
+      <label for="rate_kbit" class="checkbox-label">
+        <input type="checkbox" name="rate_enabled" {% if cfg.rate_enabled %}checked{% endif %} />
+        <span>Rate (kbit):</span>
+      </label>
+      <input id="rate_kbit" name="rate_kbit" type="number" step="1" min="1" value="{{ cfg.rate_kbit }}" />
+    </div>
 
-    <div class="wide">
-      <label for="preview_script">Итоговый скрипт (tc + iptables):</label><br />
+    <div class="wide field">
+      <label for="preview_script">Итоговый скрипт (tc + iptables):</label>
       <textarea id="preview_script" readonly>{{ preview_script }}</textarea>
     </div>
 
